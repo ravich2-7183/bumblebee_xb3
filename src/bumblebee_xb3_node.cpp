@@ -1,4 +1,6 @@
 /*
+  TODO: insert license, author info
+
   bumblebee_xb3 subscribes to image_raw output of the
   camera1394 driver, which receives data in format7_mode rgb8 mode
   from a Bumblebee XB3 camera.
@@ -6,8 +8,8 @@
   The received image is deinterlaced and three stereo cameras are set
   up: stereocam_LC, stereocam_CR and stereocam_LR.
 
-  TODO: mention that code is based on camer1394stereo package
- */
+  TODO: insert references: camera1394stereo package, image_deinterlacer_xb3 
+*/
 
 #include <ros/ros.h>
 
@@ -23,32 +25,88 @@
 #include <sensor_msgs/CameraInfo.h>
 #include <camera_info_manager/camera_info_manager.h>
 
-class BumblebeeXB3 {
+using boost::shared_ptr;
+using camera_info_manager::CameraInfoManager;
+
+class BumblebeeXB3StereoCamera
+{
+private:
+  ros::NodeHandle base_nh_;
+  ros::NodeHandle camera_nh_[2];
+
+  shared_ptr<image_transport::ImageTransport> it_;
+
+  image_transport::CameraPublisher image_pub_[2];
+
+  shared_ptr<CameraInfoManager> camera_info_mgr_[2];
+  sensor_msgs::CameraInfo camera_info_[2];
+
+  sensor_msgs::Image image_msg_[2];
+
+public:
+  BumblebeeXB3StereoCamera(ros::NodeHandle base_nh,
+                           const std::string& stereo_camera_name):
+    base_nh_(base_nh),
+    it_(new image_transport::ImageTransport(base_nh_))
+  {
+    const std::string camera_name[2] = {"left", "right"};
+    for(int i=0; i<2; i++)
+    {
+      camera_nh_[i] = ros::NodeHandle(base_nh_, stereo_camera_name+"/"+camera_name[i]);
+      image_pub_[i] = it_->advertiseCamera(stereo_camera_name+"/"+camera_name[i]+"/image_raw", 1);
+
+      camera_info_mgr_[i] = shared_ptr<CameraInfoManager>(new CameraInfoManager(camera_nh_[i]));
+      camera_info_mgr_[i]->setCameraName("bb_xb3_" + stereo_camera_name + "_" + camera_name[i]);
+
+      if(camera_info_mgr_[i]->isCalibrated())
+      {
+        camera_info_[i] = camera_info_mgr_[i]->getCameraInfo();
+      }
+      else
+      {
+        camera_info_[i].header.frame_id = "bb_xb3_" + stereo_camera_name + "_" + camera_name[i];
+      }
+    }
+  }
+
+  void publish(sensor_msgs::Image& image_msg_left, sensor_msgs::Image& image_msg_right)
+  {
+    image_msg_left.header.frame_id  = camera_info_[0].header.frame_id;
+    camera_info_[0].header.stamp    = image_msg_left.header.stamp;
+
+    image_msg_right.header.frame_id = camera_info_[1].header.frame_id;
+    camera_info_[1].header.stamp    = image_msg_right.header.stamp;
+
+    image_pub_[0].publish(image_msg_left, camera_info_[0]);
+    image_pub_[1].publish(image_msg_right, camera_info_[1]);
+  }
+};
+
+class BumblebeeXB3
+{
 private:
   enum CameraSelector {RIGHT=0, CENTER=1, LEFT=2};
   ros::NodeHandle camera1394_nh_;
-  ros::NodeHandle camera_nh_[3]; // camera node handles
+  ros::NodeHandle camera_nh_[3];
 
-  // image transport interfaces
-  boost::shared_ptr<image_transport::ImageTransport> it_;
-  image_transport::CameraPublisher image_pub_[3]; // image publishers
+  shared_ptr<image_transport::ImageTransport> it_;
 
-  // camera info
-  boost::shared_ptr<camera_info_manager::CameraInfoManager> camera_info_mgr_[3];
+  image_transport::CameraPublisher image_pub_[3];
+
+  shared_ptr<CameraInfoManager> camera_info_mgr_[3];
   sensor_msgs::CameraInfo camera_info_[3];
 
-  // camera calibration information
-  bool camera_info_is_set_[3];
-
-  // TODO make these shared pointers (why?)
   sensor_msgs::Image image_msg_[3];
 
-  std::vector<cv::Mat> split_images_;
+  BumblebeeXB3StereoCamera stereocam_LC_, stereocam_CR_, stereocam_LR_;
 
 public:
   BumblebeeXB3(ros::NodeHandle camera1394_nh):
     camera1394_nh_(camera1394_nh),
-    it_(new image_transport::ImageTransport(camera1394_nh_))
+    it_(new image_transport::ImageTransport(camera1394_nh_)),
+    stereocam_LC_(camera1394_nh_, "stereo_camera_LC"),
+    stereocam_CR_(camera1394_nh_, "stereo_camera_CR"),
+    stereocam_LR_(camera1394_nh_, "stereo_camera_LR")
   {
     const std::string camera_name[3] = {"right", "center", "left"};
     for(int i=0; i<3; i++)
@@ -56,10 +114,9 @@ public:
       camera_nh_[i] = ros::NodeHandle(camera1394_nh_, camera_name[i]);
       image_pub_[i] = it_->advertiseCamera(camera_name[i]+"/image_raw", 1);
 
-      camera_info_mgr_[i] = boost::shared_ptr<camera_info_manager::CameraInfoManager>(new camera_info_manager::CameraInfoManager(camera_nh_[i]));
+      camera_info_mgr_[i] = shared_ptr<CameraInfoManager>(new CameraInfoManager(camera_nh_[i]));
       camera_info_mgr_[i]->setCameraName("bb_xb3_" + camera_name[i]);
-      camera_info_is_set_[i] = false;
-      // set camera_info_ partially
+
       if(camera_info_mgr_[i]->isCalibrated())
       {
         camera_info_[i] = camera_info_mgr_[i]->getCameraInfo();
@@ -69,16 +126,13 @@ public:
         camera_info_[i].header.frame_id = "bb_xb3_" + camera_name[i];
       }
     }
-
-  // ros::NodeHandle stereocam_LC_nh("stereocam_LC"),
-  //                 stereocam_CR_nh("stereocam_CR"),
-  //                 stereocam_LR_nh("stereocam_LR");
   }
 
   void imageCallback(const sensor_msgs::ImagePtr& ros_img_ptr)
   {
-    // Deinterlace the image obtained from camera1394
     /*
+      Deinterlace the image obtained from camera1394
+      
       Note that the Bumblebee XB3 outputs image data formatted as
       pixel (byte) interleaved stereo images using Format_7. Pixel
       interleaved images use a raw 24bit-per-pixel format. Each sensor
@@ -102,6 +156,7 @@ public:
     }
 
     // cv::split splits an rgb image into 3 separate images
+    std::vector<cv::Mat> split_images_; // TODO: should this be made a (thread unsafe) class variable?
     cv::split(cv_img_ptr->image, split_images_);
 
     cv_bridge::CvImage cv_img;
@@ -113,25 +168,24 @@ public:
       
         CvBridge will recognize Bayer pattern encodings as having OpenCV
         type 8UC1 (8-bit unsigned, one channel), but it will not perform
-        conversions to or from Bayer pattern. This is done instead by
-        image_proc.
+        conversions to or from Bayer pattern. This is done instead by the
+        image_proc/stereo_image_proc package. 
       */
       cv_img = cv_bridge::CvImage(cv_img_ptr->header,
                                   sensor_msgs::image_encodings::BAYER_GBRG8,
                                   split_images_[i]);
-      cv_img.toImageMsg(image_msg_[i]);
-      image_msg_[i].header.frame_id = camera_info_[i].header.frame_id;
-      
-      camera_info_[i].header.stamp = ros_img_ptr->header.stamp;
-      if(!camera_info_is_set_[i])
-      {
-        camera_info_[i].width  = image_msg_[i].width;
-        camera_info_[i].height = image_msg_[i].height;
 
-        camera_info_is_set_[i] = true;
-      }
+      cv_img.toImageMsg(image_msg_[i]);
+
+      image_msg_[i].header.frame_id = camera_info_[i].header.frame_id;
+      camera_info_[i].header.stamp  = ros_img_ptr->header.stamp;
+
       image_pub_[i].publish(image_msg_[i], camera_info_[i]);
     }
+
+    stereocam_LC_.publish(image_msg_[LEFT],   image_msg_[CENTER]);
+    stereocam_CR_.publish(image_msg_[CENTER], image_msg_[RIGHT]);
+    stereocam_LR_.publish(image_msg_[LEFT],   image_msg_[RIGHT]);
   }
 }; // end of class BumblebeeXB3
 
@@ -139,11 +193,9 @@ int main(int argc, char **argv) {
   ros::init(argc, argv, "bumblebee_xb3");
   ros::NodeHandle nh;
   ros::NodeHandle camera1394_nh("camera"); // TODO get "camera" from a param/argv
+
   BumblebeeXB3 bb_xb3(camera1394_nh);
-                      // left_nh, center_nh, right_nh, 
-                      // stereocam_LC_nh, stereocam_CR_nh, stereocam_LR_nh);
-  // TODO: remove hard coded assumption that camera1394 publishes in a certain namespace 
-  // or else document this. 
+
   ros::Subscriber camera1394_rgb8_sub = nh.subscribe("camera/image_raw", 
                                                      1, 
                                                      &BumblebeeXB3::imageCallback, 
