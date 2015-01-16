@@ -26,6 +26,8 @@
 #include <camera_info_manager/camera_info_manager.h>
 
 using boost::shared_ptr;
+using std::string;
+using image_transport::ImageTransport;
 using camera_info_manager::CameraInfoManager;
 
 class BumblebeeXB3StereoCamera
@@ -34,7 +36,7 @@ private:
   ros::NodeHandle base_nh_;
   ros::NodeHandle camera_nh_[2];
 
-  shared_ptr<image_transport::ImageTransport> it_;
+  shared_ptr<ImageTransport> it_;
 
   image_transport::CameraPublisher image_pub_[2];
 
@@ -45,26 +47,36 @@ private:
 
 public:
   BumblebeeXB3StereoCamera(ros::NodeHandle base_nh,
-                           const std::string& stereo_camera_name):
+                           const string& stereo_camera_name):
     base_nh_(base_nh),
-    it_(new image_transport::ImageTransport(base_nh_))
+    it_(new ImageTransport(base_nh_))
   {
-    const std::string camera_name[2] = {"left", "right"};
+    const string camera_name[2] = {"left", "right"};
     for(int i=0; i<2; i++)
     {
       camera_nh_[i] = ros::NodeHandle(base_nh_, stereo_camera_name+"/"+camera_name[i]);
       image_pub_[i] = it_->advertiseCamera(stereo_camera_name+"/"+camera_name[i]+"/image_raw", 1);
 
+      ROS_INFO_STREAM("camera_nh_["<<i<<"].getNamespace = " << camera_nh_[i].getNamespace());
+
       camera_info_mgr_[i] = shared_ptr<CameraInfoManager>(new CameraInfoManager(camera_nh_[i]));
+      // TODO test the following (better to have calibration files in package dir)
+      // string calibration_filename = string("package://bumblebee_xb3/calibration_files/") + 
+      //                                      "bb_xb3_" + stereo_camera_name + "_" + camera_name[i]);
+      // camera_info_mgr_[i]->setCameraName(calibration_filename);
       camera_info_mgr_[i]->setCameraName("bb_xb3_" + stereo_camera_name + "_" + camera_name[i]);
 
       if(camera_info_mgr_[i]->isCalibrated())
       {
         camera_info_[i] = camera_info_mgr_[i]->getCameraInfo();
+        camera_info_[i].header.frame_id = stereo_camera_name;
       }
+      // TODO: delete this block
       else
       {
-        camera_info_[i].header.frame_id = "bb_xb3_" + stereo_camera_name + "_" + camera_name[i];
+        // TODO make the frame id the same for both cameras
+        // camera_info_[i].header.frame_id = "bb_xb3_" + stereo_camera_name + "_" + camera_name[i];
+        camera_info_[i].header.frame_id = stereo_camera_name;
       }
     }
   }
@@ -89,7 +101,7 @@ private:
   ros::NodeHandle camera1394_nh_;
   ros::NodeHandle camera_nh_[3];
 
-  shared_ptr<image_transport::ImageTransport> it_;
+  shared_ptr<ImageTransport> it_;
 
   image_transport::CameraPublisher image_pub_[3];
 
@@ -103,12 +115,12 @@ private:
 public:
   BumblebeeXB3(ros::NodeHandle camera1394_nh):
     camera1394_nh_(camera1394_nh),
-    it_(new image_transport::ImageTransport(camera1394_nh_)),
+    it_(new ImageTransport(camera1394_nh_)),
     stereocam_LC_(camera1394_nh_, "stereo_camera_LC"),
     stereocam_CR_(camera1394_nh_, "stereo_camera_CR"),
     stereocam_LR_(camera1394_nh_, "stereo_camera_LR")
   {
-    const std::string camera_name[3] = {"right", "center", "left"};
+    const string camera_name[3] = {"right", "center", "left"};
     for(int i=0; i<3; i++)
     {
       camera_nh_[i] = ros::NodeHandle(camera1394_nh_, camera_name[i]);
@@ -141,6 +153,7 @@ public:
       of these is a (GBRG) bayered image. Future firmware versions may
       support line (row) interleaved images, where the rows from each
       of the cameras are interleaved to speed processing.
+      source: 2014 version of the "Bumblebee XB3 Getting Started Manual"
      */
 
     cv_bridge::CvImagePtr cv_img_ptr(new cv_bridge::CvImage);
