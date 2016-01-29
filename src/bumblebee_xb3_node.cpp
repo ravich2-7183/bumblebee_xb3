@@ -1,6 +1,39 @@
-/*
-  TODO: insert license, author info
+/*********************************************************************
+* Software License Agreement (BSD License)
+*
+*  Copyright (c) 2016 Ravi Chalasani (ravich3141@gmail.com)
+*  All rights reserved.
+*
+*  Redistribution and use in source and binary forms, with or without
+*  modification, are permitted provided that the following conditions
+*  are met:
+*
+*   * Redistributions of source code must retain the above copyright
+*     notice, this list of conditions and the following disclaimer.
+*   * Redistributions in binary form must reproduce the above
+*     copyright notice, this list of conditions and the following
+*     disclaimer in the documentation and/or other materials provided
+*     with the distribution.
+*   * Neither the name of the author nor other contributors may be
+*     used to endorse or promote products derived from this software
+*     without specific prior written permission.
+*
+*  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+*  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+*  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS
+*  FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE
+*  COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
+*  INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
+*  BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+*  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+*  CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+*  LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN
+*  ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+*  POSSIBILITY OF SUCH DAMAGE.
+*********************************************************************/
 
+
+/*
   bumblebee_xb3 subscribes to image_raw output of the
   camera1394 driver, which receives data in format7_mode rgb8 mode
   from a Bumblebee XB3 camera.
@@ -8,7 +41,7 @@
   The received image is deinterlaced and three stereo cameras are set
   up: stereocam_LC, stereocam_CR and stereocam_LR.
 
-  TODO: insert references: camera1394stereo package, image_deinterlacer_xb3 
+  references: camera1394stereo, image_deinterlacer_xb3 
 */
 
 #include <ros/ros.h>
@@ -60,10 +93,6 @@ public:
       ROS_INFO_STREAM("camera_nh_["<<i<<"].getNamespace = " << camera_nh_[i].getNamespace());
 
       camera_info_mgr_[i] = shared_ptr<CameraInfoManager>(new CameraInfoManager(camera_nh_[i]));
-      // TODO test the following (better to have calibration files in package dir)
-      // string calibration_filename = string("package://bumblebee_xb3/calibration_files/") + 
-      //                                      "bb_xb3_" + stereo_camera_name + "_" + camera_name[i]);
-      // camera_info_mgr_[i]->setCameraName(calibration_filename);
       camera_info_mgr_[i]->setCameraName("bb_xb3_" + stereo_camera_name + "_" + camera_name[i]);
 
       if(camera_info_mgr_[i]->isCalibrated())
@@ -71,11 +100,8 @@ public:
         camera_info_[i] = camera_info_mgr_[i]->getCameraInfo();
         camera_info_[i].header.frame_id = stereo_camera_name;
       }
-      // TODO: delete this block
       else
       {
-        // TODO make the frame id the same for both cameras
-        // camera_info_[i].header.frame_id = "bb_xb3_" + stereo_camera_name + "_" + camera_name[i];
         camera_info_[i].header.frame_id = stereo_camera_name;
       }
     }
@@ -145,6 +171,9 @@ public:
     /*
       Deinterlace the image obtained from camera1394
       
+      Quote below from the Bumblebee XB3 documentation provided by ptgrey
+
+      """
       Note that the Bumblebee XB3 outputs image data formatted as
       pixel (byte) interleaved stereo images using Format_7. Pixel
       interleaved images use a raw 24bit-per-pixel format. Each sensor
@@ -154,6 +183,7 @@ public:
       support line (row) interleaved images, where the rows from each
       of the cameras are interleaved to speed processing.
       source: 2014 version of the "Bumblebee XB3 Getting Started Manual"
+      """
      */
 
     cv_bridge::CvImagePtr cv_img_ptr(new cv_bridge::CvImage);
